@@ -17,6 +17,40 @@ from util import (
 )
 
 
+def filter_builds_by_branch(
+    builds: list, branch: str = None, exclude_branches: list = None
+) -> list:
+    """Filter builds by branch criteria."""
+    if not branch and not exclude_branches:
+        return builds
+
+    filtered = []
+    exclude_set = set(exclude_branches) if exclude_branches else set()
+
+    for build in builds:
+        build_branch = build.get("branch")
+        if not isinstance(build_branch, str):
+            # Skip builds without valid branch info
+            continue
+
+        # Apply exclude filter
+        if build_branch in exclude_set:
+            continue
+
+        # Apply include filter
+        if branch:
+            if branch == "non-main":
+                if build_branch == "main":
+                    continue
+            else:
+                if build_branch != branch:
+                    continue
+
+        filtered.append(build)
+
+    return filtered
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Save Buildkite build metadata for all finished builds across pipelines in the last N days",
@@ -29,6 +63,15 @@ def main() -> None:
         help="Pipeline slug(s). Repeat flag to include multiple",
     )
     parser.add_argument("--days", type=int, default=7, help="Lookback window in days (default: 7)")
+    parser.add_argument(
+        "--branch",
+        help='Only include builds on this branch. Use "non-main" to filter for all non-main branches (optional)',
+    )
+    parser.add_argument(
+        "--exclude-branch",
+        action="append",
+        help="Exclude builds on these branches. Can be specified multiple times (optional)",
+    )
 
     args = parser.parse_args()
 
@@ -44,6 +87,18 @@ def main() -> None:
             created_to=now,
             include_retried_jobs=True,
         )
+        print(f"Found {len(builds)} finished build(s) for pipeline {pipeline_slug}")
+
+        # Filter by branch if specified
+        if args.branch or args.exclude_branch:
+            builds = filter_builds_by_branch(builds, args.branch, args.exclude_branch)
+            branch_filter_desc = []
+            if args.branch:
+                branch_filter_desc.append(f"branch={args.branch}")
+            if args.exclude_branch:
+                branch_filter_desc.append(f"exclude={','.join(args.exclude_branch)}")
+            print(f"After branch filtering ({', '.join(branch_filter_desc)}): {len(builds)} build(s)")
+
         for b in builds:
             number = b.get("number")
             if number is None:

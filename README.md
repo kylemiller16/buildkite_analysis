@@ -57,7 +57,8 @@ buildkite_analysis/
     ├── save_builds_metadata_for_pipelines.py  # Cache multiple builds
     ├── analyze_cached_builds.py      # Analyze cached data
     ├── aggregate_sheet_summary.py    # Aggregate Google Sheets data
-    └── save_job_output.py            # Download job logs
+    ├── save_job_output.py            # Download job logs for single build
+    └── save_job_output_for_pipelines.py  # Download job logs for multiple builds
 ```
 
 ## Scripts
@@ -89,21 +90,43 @@ Fetches and caches metadata for all finished builds across multiple pipelines wi
 **Usage:**
 ```bash
 python scripts/save_builds_metadata_for_pipelines.py \
-  --pipeline PIPELINE_SLUG [--pipeline PIPELINE_SLUG ...] [--days DAYS]
+  --pipeline PIPELINE_SLUG [--pipeline PIPELINE_SLUG ...] [--days DAYS] [--branch BRANCH] [--exclude-branch BRANCH ...]
 ```
 
 **Options:**
 - `--org`: Buildkite organization slug (default: "wayve-dot-ai")
 - `--pipeline`: Pipeline slug(s) - repeat flag to include multiple pipelines (required)
 - `--days`: Lookback window in days (default: 7)
+- `--branch`: Only include builds on this branch. Use "non-main" to filter for all non-main branches (optional)
+- `--exclude-branch`: Exclude builds on these branches. Can be specified multiple times (optional)
 
-**Example:**
+**Examples:**
+
+Save metadata for all builds in the last 30 days:
 ```bash
 python scripts/save_builds_metadata_for_pipelines.py \
   --pipeline federated-custom-hil-gen2-regression \
   --pipeline federated-hil-gen2 \
   --pipeline federated-hil-gen2-igpu \
   --days 30
+```
+
+Save metadata only for main branch builds:
+```bash
+python scripts/save_builds_metadata_for_pipelines.py \
+  --pipeline federated-hil-gen2 \
+  --branch main \
+  --days 14
+```
+
+Save metadata for non-main branches, excluding specific ones:
+```bash
+python scripts/save_builds_metadata_for_pipelines.py \
+  --pipeline federated-custom-hil-gen2-regression \
+  --branch non-main \
+  --exclude-branch develop \
+  --exclude-branch 'kyle.miller/testing_gen2_pipeline_stability2' \
+  --days 28
 ```
 
 
@@ -244,6 +267,60 @@ python scripts/save_job_output.py \
   --pipeline federated-custom-hil-gen2-regression \
   --build 497
 ```
+
+### 6. save_job_output_for_pipelines.py
+
+Downloads raw logs for validation jobs from all finished builds across multiple pipelines within a time window.
+
+**Usage:**
+```bash
+python scripts/save_job_output_for_pipelines.py \
+  --pipeline PIPELINE_SLUG [--pipeline PIPELINE_SLUG ...] [--days DAYS] [--branch BRANCH] [--exclude-branch BRANCH ...] [--output-dir DIR]
+```
+
+**Options:**
+- `--org`: Buildkite organization slug (default: "wayve-dot-ai")
+- `--pipeline`: Pipeline slug(s) - repeat flag to include multiple pipelines (required)
+- `--days`: Lookback window in days (default: 7)
+- `--branch`: Only include builds on this branch. Use "non-main" to filter for all non-main branches (optional)
+- `--exclude-branch`: Exclude builds on these branches. Can be specified multiple times (optional)
+- `--output-dir`: Directory to save job logs (default: same as build metadata cache directory)
+
+**Examples:**
+
+Download job logs for all builds in the last 30 days:
+```bash
+python scripts/save_job_output_for_pipelines.py \
+  --pipeline federated-custom-hil-gen2-regression \
+  --pipeline federated-hil-gen2 \
+  --pipeline federated-hil-gen2-igpu \
+  --days 30
+```
+
+Download job logs only for main branch builds:
+```bash
+python scripts/save_job_output_for_pipelines.py \
+  --pipeline federated-hil-gen2 \
+  --branch main \
+  --days 14
+```
+
+Download job logs for non-main branches, excluding specific branches:
+```bash
+python scripts/save_job_output_for_pipelines.py \
+  --pipeline federated-custom-hil-gen2-regression \
+  --branch non-main \
+  --exclude-branch develop \
+  --exclude-branch 'kyle.miller/testing_gen2_pipeline_stability2' \
+  --days 28
+```
+
+This script will:
+- Fetch build metadata for all finished builds in the specified time window
+- Find all validation jobs in each build (jobs with "validation" in the name)
+- Download the raw logs for those jobs
+- Save logs in the same directory as build metadata (or specified output directory)
+- Skip logs that have already been downloaded
 
 ## Google Sheets Setup
 
