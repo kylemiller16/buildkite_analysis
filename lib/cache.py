@@ -7,7 +7,8 @@ import requests
 
 # Cache directory (local to this toolset)
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-_HTTP_CACHE_DIR = os.path.join(_SCRIPT_DIR, "../.http_cache")
+# Use absolute path to avoid issues with working directory
+_HTTP_CACHE_DIR = os.path.join(os.path.dirname(_SCRIPT_DIR), ".http_cache")
 
 # Simple counters for observability
 _COUNTERS: Dict[str, int] = {"requests_made": 0, "cache_hits": 0}

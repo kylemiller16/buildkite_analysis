@@ -1,17 +1,25 @@
 import argparse
 import datetime as dt
+import os
+import sys
+from pathlib import Path
 from typing import Any, Callable, Dict, List
 from zoneinfo import ZoneInfo
 
-from wayve.robot.hil_tests.tools.buildkite_analysis.lib.analysis import filter_cached_jobs
-from wayve.robot.hil_tests.tools.buildkite_analysis.lib.filters import (
+# Add lib directory to path for standalone execution
+_SCRIPT_DIR = Path(__file__).resolve().parent
+_LIB_DIR = _SCRIPT_DIR.parent / "lib"
+sys.path.insert(0, str(_LIB_DIR))
+
+from analysis import filter_cached_jobs
+from filters import (
     build_branch_filter,
     build_exclude_branch_filter,
     build_job_name_filter,
     build_pipeline_filter,
     build_pst_time_of_day_filter,
 )
-from wayve.robot.hil_tests.tools.buildkite_analysis.lib.spreadsheet import (
+from spreadsheet import (
     connect_to_sheets,
     format_data_for_sheets,
     is_sheets_available,

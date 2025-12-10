@@ -14,28 +14,50 @@ This toolset helps you analyze Buildkite build performance and reliability by:
 
 ### Prerequisites
 
- **Buildkite API Token**: Create a file at `~/.buildkite_token` containing your Buildkite API token
+1. **Python 3.8+**: Ensure you have Python 3.8 or later installed
+2. **Buildkite API Token**: Create a file at `~/.buildkite_token` containing your Buildkite API token
    ```bash
    echo "your_buildkite_api_token_here" > ~/.buildkite_token
    ```
 
+### Installation
+
+1. **Create and activate a virtual environment** (recommended):
+   ```bash
+   python3 -m venv venv
+   source venv/bin/activate  # On Windows: venv\Scripts\activate
+   ```
+
+2. **Install dependencies**:
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+   This installs:
+   - `requests` - For Buildkite API calls
+   - `gspread` - For Google Sheets integration (optional)
+   - `google-auth` - For Google Sheets authentication (optional)
 
 ### Directory Structure
 
 ```
 buildkite_analysis/
 ├── README.md                          # This file
-├── BUILD                              # Bazel build configuration
+├── requirements.txt                   # Python dependencies
 ├── build_metadata_cache/              # Local cache for build metadata
 ├── lib/                              # Core library modules
+│   ├── __init__.py                   # Package marker
 │   ├── analysis.py                   # Main analysis and filtering logic
 │   ├── cache.py                      # HTTP request caching
 │   ├── filters.py                    # Predefined filter functions
+│   ├── spreadsheet.py                 # Google Sheets integration
 │   └── util.py                       # Buildkite API utilities
 └── scripts/                          # Executable scripts
     ├── save_build_metadata.py        # Cache single build metadata
     ├── save_builds_metadata_for_pipelines.py  # Cache multiple builds
-    └── analyze_cached_builds.py      # Analyze cached data
+    ├── analyze_cached_builds.py      # Analyze cached data
+    ├── aggregate_sheet_summary.py    # Aggregate Google Sheets data
+    └── save_job_output.py            # Download job logs
 ```
 
 ## Scripts
@@ -46,9 +68,7 @@ Fetches and caches metadata for a single build.
 
 **Usage:**
 ```bash
-
-bazel run //wayve/robot/hil_tests/tools/buildkite_analysis:save_build_metadata -- \
-  --pipeline PIPELINE_SLUG --build BUILD_NUMBER
+python scripts/save_build_metadata.py --pipeline PIPELINE_SLUG --build BUILD_NUMBER
 ```
 
 **Options:**
@@ -58,7 +78,7 @@ bazel run //wayve/robot/hil_tests/tools/buildkite_analysis:save_build_metadata -
 
 **Example:**
 ```bash
-bazel run //wayve/robot/hil_tests/tools/buildkite_analysis:save_build_metadata -- \
+python scripts/save_build_metadata.py \
   --pipeline federated-custom-hil-gen2-regression --build 497
 ```
 
@@ -68,15 +88,23 @@ Fetches and caches metadata for all finished builds across multiple pipelines wi
 
 **Usage:**
 ```bash
-bazel run //wayve/robot/hil_tests/tools/buildkite_analysis:save_builds_metadata_for_pipelines -- \
-  --pipeline federated-custom-hil-gen2-regression --pipeline federated-hil-gen2 --pipeline federated-hil-gen2-igpu --days 30
-
+python scripts/save_builds_metadata_for_pipelines.py \
+  --pipeline PIPELINE_SLUG [--pipeline PIPELINE_SLUG ...] [--days DAYS]
 ```
 
 **Options:**
 - `--org`: Buildkite organization slug (default: "wayve-dot-ai")
 - `--pipeline`: Pipeline slug(s) - repeat flag to include multiple pipelines (required)
 - `--days`: Lookback window in days (default: 7)
+
+**Example:**
+```bash
+python scripts/save_builds_metadata_for_pipelines.py \
+  --pipeline federated-custom-hil-gen2-regression \
+  --pipeline federated-hil-gen2 \
+  --pipeline federated-hil-gen2-igpu \
+  --days 30
+```
 
 
 ### 3. analyze_cached_builds.py
@@ -85,7 +113,7 @@ Analyzes cached build data with flexible filtering and generates statistical rep
 
 **Usage:**
 ```bash
-bazel run //wayve/robot/hil_tests/tools/buildkite_analysis:analyze_cached_builds -- [OPTIONS]
+python scripts/analyze_cached_builds.py [OPTIONS]
 ```
 
 **Options:**
@@ -105,9 +133,9 @@ bazel run //wayve/robot/hil_tests/tools/buildkite_analysis:analyze_cached_builds
 
 **Examples:**
 
-Analyze Gen2 Post-submit jobs in the last 28 for main branch
+Analyze Gen2 Post-submit jobs in the last 28 days for main branch
 ```bash
-bazel run //wayve/robot/hil_tests/tools/buildkite_analysis:analyze_cached_builds -- \
+python scripts/analyze_cached_builds.py \
   --pipeline federated-hil-gen2 \
   --pipeline federated-hil-gen2-igpu \
   --job-name federated-hil-gen2-validation-rcm-aem-evt-1 \
@@ -117,9 +145,9 @@ bazel run //wayve/robot/hil_tests/tools/buildkite_analysis:analyze_cached_builds
   --days 28
 ```
 
-Analyze Gen2 Post-submit jobs in the last 28 for non-main branch
+Analyze Gen2 Post-submit jobs in the last 28 days for non-main branch
 ```bash
-bazel run //wayve/robot/hil_tests/tools/buildkite_analysis:analyze_cached_builds -- \
+python scripts/analyze_cached_builds.py \
   --pipeline federated-hil-gen2 \
   --pipeline federated-hil-gen2-igpu \
   --job-name federated-hil-gen2-validation-rcm-aem-evt-1 \
@@ -132,7 +160,7 @@ bazel run //wayve/robot/hil_tests/tools/buildkite_analysis:analyze_cached_builds
 
 Analyze Gen2 Pre-submit jobs in the last 28 days for all feature branches
 ```bash
-bazel run //wayve/robot/hil_tests/tools/buildkite_analysis:analyze_cached_builds -- \
+python scripts/analyze_cached_builds.py \
   --pipeline federated-custom-hil-gen2-regression \
   --job-name federated-custom-hil-gen2-regression-validation-rcm-aem-evt-1 \
   --job-name federated-custom-hil-gen2-regression-validation-rcm-aem-evt-1-igpu \
@@ -143,7 +171,7 @@ bazel run //wayve/robot/hil_tests/tools/buildkite_analysis:analyze_cached_builds
 
 Export analysis results to Google Sheets
 ```bash
-bazel run //wayve/robot/hil_tests/tools/buildkite_analysis:analyze_cached_builds -- \
+python scripts/analyze_cached_builds.py \
   --pipeline federated-hil-gen2 \
   --job-name validation \
   --days 7 \
@@ -155,7 +183,7 @@ bazel run //wayve/robot/hil_tests/tools/buildkite_analysis:analyze_cached_builds
 
 Combine console output with Google Sheets export
 ```bash
-bazel run //wayve/robot/hil_tests/tools/buildkite_analysis:analyze_cached_builds -- \
+python scripts/analyze_cached_builds.py \
   --pipeline federated-custom-hil-gen2-regression \
   --exclude-branch main \
   --exclude-branch develop \
@@ -167,11 +195,61 @@ bazel run //wayve/robot/hil_tests/tools/buildkite_analysis:analyze_cached_builds
 ```
 
 
+### 4. aggregate_sheet_summary.py
+
+Aggregates data across all tabs in a Google Sheet and creates a summary tab.
+
+**Usage:**
+```bash
+python scripts/aggregate_sheet_summary.py \
+  --sheets-id SHEET_ID \
+  --sheets-credentials CREDENTIALS_PATH \
+  [--summary-tab TAB_NAME] \
+  [--exclude-tabs TAB_NAME ...]
+```
+
+**Options:**
+- `--sheets-id`: Google Sheets ID or URL (required)
+- `--sheets-credentials`: Path to Google Sheets service account credentials JSON file (required)
+- `--summary-tab`: Name for the summary tab (default: "Summary")
+- `--exclude-tabs`: Tab names to exclude from aggregation (can be specified multiple times)
+
+**Example:**
+```bash
+python scripts/aggregate_sheet_summary.py \
+  --sheets-id "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms" \
+  --sheets-credentials "~/.config/gcp/buildkite-analysis-sa.json" \
+  --summary-tab "Aggregated" \
+  --exclude-tabs "Summary" \
+  --exclude-tabs "Aggregated"
+```
+
+### 5. save_job_output.py
+
+Downloads raw logs for validation jobs from Buildkite build metadata.
+
+**Usage:**
+```bash
+python scripts/save_job_output.py --pipeline PIPELINE_SLUG --build BUILD_NUMBER
+```
+
+**Options:**
+- `--org`: Buildkite organization slug (default: "wayve-dot-ai")
+- `--pipeline`: Pipeline slug (required)
+- `--build`: Build number (required)
+
+**Example:**
+```bash
+python scripts/save_job_output.py \
+  --pipeline federated-custom-hil-gen2-regression \
+  --build 497
+```
+
 ## Google Sheets Setup
 
 To use Google Sheets output, you need:
 
-1. **Install dependencies**: `pip install gspread google-auth`
+1. **Install dependencies** (already included in requirements.txt): `pip install gspread google-auth`
 2. **Create a Google Cloud service account**:
    - Go to [Google Cloud Console](https://console.cloud.google.com/)
    - Create/select a project

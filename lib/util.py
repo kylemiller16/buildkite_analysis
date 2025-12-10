@@ -4,14 +4,27 @@ import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from .cache import cached_json_get, increment_cache_hits
+try:
+    from .cache import cached_json_get, increment_cache_hits
+except ImportError:
+    # Fallback for direct imports (standalone execution)
+    from cache import cached_json_get, increment_cache_hits
 
 
 def _compute_tool_root_dir() -> str:
+    """Compute the root directory of the buildkite_analysis tool.
+    
+    Works both in Bazel (via BUILD_WORKSPACE_DIRECTORY) and standalone.
+    """
     ws = os.environ.get("BUILD_WORKSPACE_DIRECTORY")
     if ws:
-        return os.path.join(ws, "wayve/robot/hil_tests/tools/buildkite_analysis")
-    # Fallback: parent of lib/ → the buildkite_analysis package dir
+        # Bazel environment: check if the old path structure exists
+        old_path = os.path.join(ws, "wayve/robot/hil_tests/tools/buildkite_analysis")
+        if os.path.exists(old_path):
+            return old_path
+        # Otherwise use workspace root
+        return ws
+    # Standalone: parent of lib/ → the buildkite_analysis package dir
     script_dir = os.path.dirname(os.path.abspath(__file__))
     return str(Path(script_dir).resolve().parent)
 

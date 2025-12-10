@@ -1,9 +1,16 @@
 import argparse
 import datetime as dt
 import os
+import sys
+from pathlib import Path
 
-from wayve.robot.hil_tests.tools.buildkite_analysis.lib.cache import get_http_cache_metrics
-from wayve.robot.hil_tests.tools.buildkite_analysis.lib.util import (
+# Add lib directory to path for standalone execution
+_SCRIPT_DIR = Path(__file__).resolve().parent
+_LIB_DIR = _SCRIPT_DIR.parent / "lib"
+sys.path.insert(0, str(_LIB_DIR))
+
+from cache import get_http_cache_metrics
+from util import (
     BuildkiteConfig,
     get_build_metadata,
     list_finished_builds_for_pipeline,

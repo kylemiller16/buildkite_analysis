@@ -3,7 +3,11 @@ import json
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Optional
 
-from .util import BuildkiteConfig
+try:
+    from .util import BuildkiteConfig
+except ImportError:
+    # Fallback for direct imports (standalone execution)
+    from util import BuildkiteConfig
 
 
 def _parse_iso8601(ts: Optional[str]) -> Optional[dt.datetime]:

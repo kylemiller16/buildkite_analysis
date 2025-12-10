@@ -6,9 +6,16 @@ Reads existing buildkite analysis data from multiple worksheets and creates cons
 
 import argparse
 import datetime as dt
+import sys
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from wayve.robot.hil_tests.tools.buildkite_analysis.lib.spreadsheet import (
+# Add lib directory to path for standalone execution
+_SCRIPT_DIR = Path(__file__).resolve().parent
+_LIB_DIR = _SCRIPT_DIR.parent / "lib"
+sys.path.insert(0, str(_LIB_DIR))
+
+from spreadsheet import (
     connect_to_sheets,
     is_sheets_available,
     write_to_sheets,
