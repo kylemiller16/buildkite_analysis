@@ -1,8 +1,10 @@
 """Utility functions for Buildkite API access and configuration."""
 
 import datetime as dt
+import glob
 import json
 import os
+import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -123,12 +125,6 @@ def list_finished_builds_for_pipeline(
         page_builds: List[Dict[str, Any]] = cached_json_get(
             url, headers=_auth_headers(), params=params
         )
-
-    all_builds: List[Dict[str, Any]] = []
-    page = 1
-    while True:
-        params["page"] = str(page)
-        page_builds: List[Dict[str, Any]] = cached_json_get(url, headers=_auth_headers(), params=params)
         if not page_builds:
             break
         all_builds.extend(page_builds)
@@ -156,3 +152,105 @@ def list_finished_builds_for_pipeline(
 
     return filtered
     # cache helpers moved to cache.py
+
+
+def is_build_pass(build: Dict[str, Any]) -> bool:
+    """Determine if a build passed."""
+    state = build.get("state")
+    if state == "passed":
+        return True
+    if state == "failed":
+        return False
+    # Fallback: check if all jobs passed
+    jobs = build.get("jobs", [])
+    if not jobs:
+        return False
+    for job in jobs:
+        job_state = job.get("state")
+        if job_state not in ("passed", "skipped", "canceled"):
+            return False
+    return True
+
+
+def is_job_pass(job: Dict[str, Any]) -> bool:
+    """Determine if a job passed."""
+    state = job.get("state")
+    if state == "passed":
+        return True
+    if state == "failed":
+        return False
+    # Fallback to exit_status when state is not explicit
+    exit_status = job.get("exit_status")
+    if isinstance(exit_status, int):
+        return exit_status == 0
+    return False
+
+
+def find_log_file_for_job(metadata_path: str, job_id: str) -> Optional[str]:
+    """Find the log file for a given job ID."""
+    metadata_dir = os.path.dirname(metadata_path)
+    metadata_basename = os.path.splitext(os.path.basename(metadata_path))[0]
+
+    # Log files follow pattern: {metadata_basename}__{job_id}__*.log
+    log_pattern = f"{metadata_basename}__{job_id}__*.log"
+
+    matches = glob.glob(os.path.join(metadata_dir, log_pattern))
+    if matches:
+        return matches[0]  # Return first match
+    return None
+
+
+def analyze_bazel_targets_from_log(log_file_path: str, job_passed: bool) -> Dict[str, bool]:
+    """
+    Analyze a log file to extract Bazel target pass/fail information.
+
+    Looks for lines matching:
+    - "--- ⛰️  Running bazel-run step"
+    - "--- 🏃 Running target //wayve/robot/hil_tests/gen2:<some-name>"
+
+    Since bazel-run steps run sequentially, only the last one could have failed.
+    If the job passed overall, all bazel-run steps passed.
+    If the job failed, the last bazel-run step failed, and all previous ones passed.
+
+    Args:
+        log_file_path: Path to the log file
+        job_passed: Whether the job passed overall
+
+    Returns:
+        Dictionary mapping target names to pass status (True = passed, False = failed)
+        Example: {"//wayve/robot/hil_tests/gen2:target1": True, "//wayve/robot/hil_tests/gen2:target2": False}
+    """
+    target_results: Dict[str, bool] = {}
+
+    try:
+        with open(log_file_path, "r", encoding="utf-8") as f:
+            log_content = f.read()
+    except Exception:
+        # If we can't read the file, return empty dict
+        return {}
+
+    # Pattern to match: "--- 🏃 Running target //wayve/robot/hil_tests/gen2:<some-name>"
+    # The target name is captured in group 1
+    target_pattern = r"--- 🏃 Running target (//wayve/robot/hil_tests/gen2:[^\s]+)"
+
+    # Find all target runs in the log
+    matches = re.findall(target_pattern, log_content)
+
+    if not matches:
+        return {}
+
+    # If job passed, all targets passed
+    if job_passed:
+        for target in matches:
+            target_results[target] = True
+    else:
+        # If job failed, last target failed, all previous passed
+        for i, target in enumerate(matches):
+            if i == len(matches) - 1:
+                # Last target failed
+                target_results[target] = False
+            else:
+                # Previous targets passed
+                target_results[target] = True
+
+    return target_results
