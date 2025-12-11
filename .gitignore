@@ -1,1 +1,4 @@
 build_metadata_cache*
+.http_cache
+__pycache__
+venv
