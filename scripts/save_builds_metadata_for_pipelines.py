@@ -1,3 +1,5 @@
+"""Save Buildkite build metadata for multiple pipelines to cached JSON files."""
+
 import argparse
 import datetime as dt
 import os
@@ -52,6 +54,7 @@ def filter_builds_by_branch(
 
 
 def main() -> None:
+    """Main entry point for saving build metadata for pipelines."""
     parser = argparse.ArgumentParser(
         description="Save Buildkite build metadata for all finished builds across pipelines in the last N days",
     )

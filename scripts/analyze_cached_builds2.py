@@ -1,3 +1,5 @@
+"""Analyze cached Buildkite builds with advanced filtering and Bazel target analysis."""
+
 import argparse
 import datetime as dt
 import glob
@@ -31,7 +33,8 @@ from filters import (
     build_pipeline_filter,
     build_pst_time_of_day_filter,
 )
-from util import BuildkiteConfig
+# BuildkiteConfig is imported but not used in this file
+# from util import BuildkiteConfig
 
 
 def _is_build_pass(build: Dict[str, Any]) -> bool:
@@ -70,10 +73,10 @@ def _find_log_file_for_job(metadata_path: str, job_id: str) -> Optional[str]:
     """Find the log file for a given job ID."""
     metadata_dir = os.path.dirname(metadata_path)
     metadata_basename = os.path.splitext(os.path.basename(metadata_path))[0]
-    
+
     # Log files follow pattern: {metadata_basename}__{job_id}__*.log
     log_pattern = f"{metadata_basename}__{job_id}__*.log"
-    
+
     matches = glob.glob(os.path.join(metadata_dir, log_pattern))
     if matches:
         return matches[0]  # Return first match
@@ -83,44 +86,44 @@ def _find_log_file_for_job(metadata_path: str, job_id: str) -> Optional[str]:
 def analyze_bazel_targets_from_log(log_file_path: str, job_passed: bool) -> Dict[str, bool]:
     """
     Analyze a log file to extract Bazel target pass/fail information.
-    
+
     Looks for lines matching:
     - "--- ⛰️  Running bazel-run step"
     - "--- 🏃 Running target //wayve/robot/hil_tests/gen2:<some-name>"
-    
+
     Since bazel-run steps run sequentially, only the last one could have failed.
     If the job passed overall, all bazel-run steps passed.
     If the job failed, the last bazel-run step failed, and all previous ones passed.
-    
+
     Args:
         log_file_path: Path to the log file
         job_passed: Whether the job passed overall
-        
+
     Returns:
         Dictionary mapping target names to pass status (True = passed, False = failed)
         Example: {"//wayve/robot/hil_tests/gen2:target1": True, "//wayve/robot/hil_tests/gen2:target2": False}
     """
-    import re
-    
+    import re  # pylint: disable=import-outside-toplevel
+
     target_results: Dict[str, bool] = {}
-    
+
     try:
         with open(log_file_path, "r", encoding="utf-8") as f:
             log_content = f.read()
-    except Exception as e:
+    except Exception:
         # If we can't read the file, return empty dict
         return {}
-    
+
     # Pattern to match: "--- 🏃 Running target //wayve/robot/hil_tests/gen2:<some-name>"
     # The target name is captured in group 1
     target_pattern = r"--- 🏃 Running target (//wayve/robot/hil_tests/gen2:[^\s]+)"
-    
+
     # Find all target runs in the log
     matches = re.findall(target_pattern, log_content)
-    
+
     if not matches:
         return {}
-    
+
     # If job passed, all targets passed
     if job_passed:
         for target in matches:
@@ -134,7 +137,7 @@ def analyze_bazel_targets_from_log(log_file_path: str, job_passed: bool) -> Dict
             else:
                 # Previous targets passed
                 target_results[target] = True
-    
+
     return target_results
 
 
@@ -146,7 +149,7 @@ def generate_bazel_target_charts(
 ) -> None:
     """
     Generate a single pie chart showing job pass/fail and categorized target failures.
-    
+
     Args:
         bazel_target_stats: Dictionary mapping target names to pass/fail counts
         job_stats_by_name: Dictionary mapping job names to pass/fail counts
@@ -156,15 +159,15 @@ def generate_bazel_target_charts(
     if not CHART_AVAILABLE:
         print("Warning: matplotlib is not available. Install with: pip install matplotlib")
         return
-    
+
     # Calculate total job passes (sum across all jobs)
     total_job_passes = sum(stats["pass"] for stats in job_stats_by_name.values())
-    
+
     # Count failures for specific target names (exact match on the target name after the colon)
     device_recovery_failures = 0
     setup_device_failures = 0
     regression_tests_failures = 0
-    
+
     for target_name, stats in bazel_target_stats.items():
         fail_count = stats["fail"]
         # Extract the target name part after the colon
@@ -172,7 +175,7 @@ def generate_bazel_target_charts(
             target_part = target_name.split(":")[-1]
         else:
             target_part = target_name
-        
+
         # Match exact target names
         if target_part == "device_recovery":
             device_recovery_failures += fail_count
@@ -180,42 +183,42 @@ def generate_bazel_target_charts(
             setup_device_failures += fail_count
         elif target_part == "regression_tests_rcm_aem_evt_1":
             regression_tests_failures += fail_count
-    
+
     # Prepare data for pie chart
     labels = []
     sizes = []
     colors = []
-    
+
     if total_job_passes > 0:
         labels.append("Job Passed")
         sizes.append(total_job_passes)
         colors.append("#2ecc71")  # Green
-    
+
     if device_recovery_failures > 0:
         labels.append("device_recovery failures")
         sizes.append(device_recovery_failures)
         colors.append("#9b59b6")  # Purple
-    
+
     if setup_device_failures > 0:
         labels.append("setup_device failures")
         sizes.append(setup_device_failures)
         colors.append("#f39c12")  # Orange
-    
+
     if regression_tests_failures > 0:
         labels.append("regression_tests_rcm_aem_evt_1 failures")
         sizes.append(regression_tests_failures)
         colors.append("#e74c3c")  # Red
-    
+
     if not sizes:
         print("No data to generate charts")
         return
-    
+
     # Determine output path
     if output_path:
         chart_path = output_path
     else:
         chart_path = f"bazel_targets_chart.{output_format}"
-    
+
     if output_format == "png":
         _generate_png_charts(labels, sizes, colors, chart_path)
     elif output_format == "html":
@@ -223,21 +226,21 @@ def generate_bazel_target_charts(
     else:
         print(f"Unknown output format: {output_format}")
         return
-    
+
     print(f"\nChart saved to: {os.path.abspath(chart_path)}")
 
 
 def _generate_png_charts(labels: List[str], sizes: List[int], colors: List[str], output_path: str) -> None:
     """Generate a single PNG pie chart."""
-    fig, ax = plt.subplots(figsize=(10, 8))
-    
+    _, ax = plt.subplots(figsize=(10, 8))
+
     # Calculate percentages for labels
     total = sum(sizes)
     percentages = [(size / total * 100) for size in sizes]
     labels_with_pct = [f"{label}\n({pct:.1f}%)" for label, pct in zip(labels, percentages)]
-    
+
     # Create pie chart
-    wedges, texts, autotexts = ax.pie(
+    ax.pie(
         sizes,
         labels=labels_with_pct,
         colors=colors,
@@ -245,9 +248,9 @@ def _generate_png_charts(labels: List[str], sizes: List[int], colors: List[str],
         startangle=90,
         textprops={"fontsize": 12, "fontweight": "bold"},
     )
-    
+
     ax.set_title("Job and Target Failure Statistics", fontsize=16, fontweight="bold", pad=20)
-    
+
     plt.tight_layout()
     plt.savefig(output_path, dpi=150, bbox_inches="tight")
     plt.close()
@@ -258,7 +261,7 @@ def _generate_html_charts(labels: List[str], sizes: List[int], colors: List[str]
     # Generate PNG first, then embed in HTML
     png_path = output_path.replace(".html", ".png")
     _generate_png_charts(labels, sizes, colors, png_path)
-    
+
     # Create HTML file
     html_content = f"""<!DOCTYPE html>
 <html>
@@ -306,10 +309,10 @@ def _generate_html_charts(labels: List[str], sizes: List[int], colors: List[str]
     </div>
 </body>
 </html>"""
-    
+
     with open(output_path, "w", encoding="utf-8") as f:
         f.write(html_content)
-    
+
     print(f"HTML file saved to: {os.path.abspath(output_path)}")
     print(f"PNG chart saved to: {os.path.abspath(png_path)}")
 
@@ -322,20 +325,20 @@ def load_cached_builds_with_logs(
 ) -> List[Dict[str, Any]]:
     """
     Load cached builds and their associated log files.
-    
+
     Returns a list of build records with log file information.
     Each record contains:
     - build_metadata: The full build metadata dict
     - jobs_with_logs: List of (job, log_file_path) tuples
     """
-    from analysis import _iter_cached_build_files
-    
+    from analysis import _iter_cached_build_files  # pylint: disable=import-outside-toplevel
+
     # Get all job records using existing filter logic
     job_records = filter_cached_jobs(filter_callbacks, started_from=started_from, started_to=started_to)
-    
+
     # Group by build
     builds_by_key: Dict[Tuple[str, int], Dict[str, Any]] = {}
-    
+
     # First, collect all unique builds
     build_keys_seen: Set[Tuple[str, int]] = set()
     for job_record in job_records:
@@ -343,7 +346,7 @@ def load_cached_builds_with_logs(
         build_number = job_record.get("build_number")
         if pipeline_slug and build_number is not None:
             build_keys_seen.add((pipeline_slug, build_number))
-    
+
     # Load build metadata for all unique builds
     for build_file in _iter_cached_build_files():
         try:
@@ -362,14 +365,14 @@ def load_cached_builds_with_logs(
                     }
         except Exception:
             continue
-    
+
     # Now match jobs to builds and find log files
     for job_record in job_records:
         pipeline_slug = job_record.get("pipeline_slug")
         build_number = job_record.get("build_number")
         if not pipeline_slug or build_number is None:
             continue
-        
+
         build_key = (pipeline_slug, build_number)
         if build_key in builds_by_key:
             job = job_record.get("job", {})
@@ -377,11 +380,12 @@ def load_cached_builds_with_logs(
             if job_id:
                 log_file = _find_log_file_for_job(builds_by_key[build_key]["metadata_path"], job_id)
                 builds_by_key[build_key]["jobs_with_logs"].append((job, log_file))
-    
+
     return list(builds_by_key.values())
 
 
 def main() -> None:
+    """Main entry point for analyzing cached builds with Bazel target analysis."""
     parser = argparse.ArgumentParser(
         description="Analyze cached Buildkite builds with log file analysis for Bazel targets"
     )
@@ -481,7 +485,7 @@ def main() -> None:
         for job, log_file_path in jobs_with_logs:
             job_name = job.get("name", "unknown")
             job_passed = _is_job_pass(job)
-            
+
             if job_passed:
                 job_stats_by_name[job_name]["pass"] += 1
             else:
@@ -511,7 +515,7 @@ def main() -> None:
     if total_builds > 0:
         build_pass_pct = (build_stats["pass"] / total_builds) * 100
         build_fail_pct = (build_stats["fail"] / total_builds) * 100
-        print(f"\nBUILD STATISTICS:")
+        print("\nBUILD STATISTICS:")
         print(f"  Total builds: {total_builds}")
         print(f"  Passed: {build_stats['pass']} ({build_pass_pct:.1f}%)")
         print(f"  Failed: {build_stats['fail']} ({build_fail_pct:.1f}%)")
@@ -520,15 +524,15 @@ def main() -> None:
 
     # Job statistics (per job name)
     if job_stats_by_name:
-        print(f"\nJOB STATISTICS:")
-        
+        print("\nJOB STATISTICS:")
+
         # Sort by total runs (pass + fail) descending
         sorted_jobs = sorted(
             job_stats_by_name.items(),
             key=lambda x: x[1]["pass"] + x[1]["fail"],
             reverse=True,
         )
-        
+
         for job_name, stats in sorted_jobs:
             job_total = stats["pass"] + stats["fail"]
             if job_total > 0:
@@ -545,17 +549,17 @@ def main() -> None:
 
     # Bazel target statistics
     if bazel_target_stats:
-        print(f"\nBAZEL TARGET STATISTICS:")
+        print("\nBAZEL TARGET STATISTICS:")
         print(f"  Total unique targets: {len(bazel_target_stats)}")
-        
+
         # Sort by total runs (pass + fail) descending
         sorted_targets = sorted(
             bazel_target_stats.items(),
             key=lambda x: x[1]["pass"] + x[1]["fail"],
             reverse=True,
         )
-        
-        print(f"\n  Top targets by total runs:")
+
+        print("\n  Top targets by total runs:")
         for target_name, stats in sorted_targets[:20]:  # Show top 20
             total_runs = stats["pass"] + stats["fail"]
             if total_runs > 0:
@@ -565,12 +569,12 @@ def main() -> None:
                 print(f"      Total runs: {total_runs}")
                 print(f"      Passed: {stats['pass']} ({pass_pct:.1f}%)")
                 print(f"      Failed: {stats['fail']} ({fail_pct:.1f}%)")
-        
+
         # Generate charts if requested
         if args.chart_output and (bazel_target_stats or job_stats_by_name):
             generate_bazel_target_charts(bazel_target_stats, job_stats_by_name, args.chart_output, args.chart_path)
     else:
-        print(f"\nBAZEL TARGET STATISTICS: No target data found (log analysis not implemented)")
+        print("\nBAZEL TARGET STATISTICS: No target data found (log analysis not implemented)")
 
 
 if __name__ == "__main__":

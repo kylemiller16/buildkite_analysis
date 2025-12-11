@@ -1,3 +1,5 @@
+"""Filter functions for Buildkite job records."""
+
 from typing import Any, Callable, Dict, List
 from zoneinfo import ZoneInfo
 
@@ -56,8 +58,7 @@ def build_branch_filter(branch_name: str) -> Callable[[Dict[str, Any]], bool]:
 
         if branch_name == "non-main":
             return build_branch != "main"
-        else:
-            return build_branch == branch_name
+        return build_branch == branch_name
 
     return predicate
 

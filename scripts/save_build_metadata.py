@@ -1,3 +1,5 @@
+"""Save Buildkite build metadata to cached JSON files."""
+
 import argparse
 import os
 import sys
@@ -13,6 +15,7 @@ from util import BuildkiteConfig, get_build_metadata
 
 
 def main() -> None:
+    """Main entry point for saving build metadata."""
     parser = argparse.ArgumentParser(description="Save Buildkite build metadata to a cached JSON file")
     parser.add_argument("--org", default=BuildkiteConfig.ORG_SLUG, help="Buildkite organization slug")
     parser.add_argument("--pipeline", required=True, help="Pipeline slug")

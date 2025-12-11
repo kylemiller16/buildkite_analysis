@@ -1,3 +1,5 @@
+"""Analysis functions for processing Buildkite build data."""
+
 import datetime as dt
 import json
 from pathlib import Path

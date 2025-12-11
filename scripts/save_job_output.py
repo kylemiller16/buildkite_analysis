@@ -1,3 +1,5 @@
+"""Download raw logs for validation jobs from Buildkite build metadata."""
+
 import argparse
 import json
 import os
@@ -41,6 +43,7 @@ def download_job_log(url: str, output_path: str) -> None:
 
 
 def main() -> None:
+    """Main entry point for downloading job logs."""
     parser = argparse.ArgumentParser(description="Download raw logs for validation jobs from Buildkite build metadata")
     parser.add_argument("--org", default=BuildkiteConfig.ORG_SLUG, help="Buildkite organization slug")
     parser.add_argument("--pipeline", required=True, help="Pipeline slug")

@@ -1,3 +1,5 @@
+"""HTTP caching utilities for Buildkite API requests."""
+
 import hashlib
 import json
 import os
@@ -32,10 +34,12 @@ def _cache_key(url: str, params: Optional[Dict[str, Any]]) -> str:
 
 
 def _cache_path(url: str, params: Optional[Dict[str, Any]]) -> str:
+    """Get the cache file path for a given URL and parameters."""
     return os.path.join(_HTTP_CACHE_DIR, f"{_cache_key(url, params)}.json")
 
 
 def increment_cache_hits() -> None:
+    """Increment the cache hits counter."""
     _COUNTERS["cache_hits"] += 1
 
 
@@ -68,4 +72,5 @@ def cached_json_get(
 
 
 def get_http_cache_metrics() -> Dict[str, int]:
+    """Get HTTP cache metrics (requests made and cache hits)."""
     return dict(_COUNTERS)

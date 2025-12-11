@@ -1,3 +1,5 @@
+"""Utility functions for Buildkite API access and configuration."""
+
 import datetime as dt
 import json
 import os
@@ -13,7 +15,7 @@ except ImportError:
 
 def _compute_tool_root_dir() -> str:
     """Compute the root directory of the buildkite_analysis tool.
-    
+
     Works both in Bazel (via BUILD_WORKSPACE_DIRECTORY) and standalone.
     """
     ws = os.environ.get("BUILD_WORKSPACE_DIRECTORY")
@@ -30,6 +32,8 @@ def _compute_tool_root_dir() -> str:
 
 
 class BuildkiteConfig:
+    """Configuration for Buildkite API access."""
+
     script_dir = os.path.dirname(os.path.abspath(__file__))
     TOKEN_FILE = Path.home() / ".buildkite_token"
     ORG_SLUG = "wayve-dot-ai"
@@ -43,6 +47,7 @@ class BuildkiteConfig:
 
     @staticmethod
     def load_token() -> str:
+        """Load the Buildkite API token from the token file."""
         if not BuildkiteConfig.TOKEN_FILE.exists():
             raise FileNotFoundError(f"Token file not found: {BuildkiteConfig.TOKEN_FILE}")
         return BuildkiteConfig.TOKEN_FILE.read_text(encoding="utf-8").strip()
@@ -72,7 +77,10 @@ def get_build_metadata(org_slug: str, pipeline_slug: str, build_number: int) -> 
         increment_cache_hits()
         return out_path
 
-    url = f"{BuildkiteConfig.API_URL}/organizations/{org_slug}/pipelines/{pipeline_slug}/builds/{build_number}"
+    url = (
+        f"{BuildkiteConfig.API_URL}/organizations/{org_slug}/"
+        f"pipelines/{pipeline_slug}/builds/{build_number}"
+    )
     build_json: Dict[str, Any] = cached_json_get(url, headers=_auth_headers(), params=None)
 
     tmp_path = f"{out_path}.tmp"
@@ -107,6 +115,14 @@ def list_finished_builds_for_pipeline(
         params["created_from"] = _isoformat(created_from)
     if created_to:
         params["created_to"] = _isoformat(created_to)
+
+    all_builds: List[Dict[str, Any]] = []
+    page = 1
+    while True:
+        params["page"] = str(page)
+        page_builds: List[Dict[str, Any]] = cached_json_get(
+            url, headers=_auth_headers(), params=params
+        )
 
     all_builds: List[Dict[str, Any]] = []
     page = 1

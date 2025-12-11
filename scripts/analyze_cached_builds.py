@@ -1,6 +1,7 @@
+"""Analyze cached Buildkite builds with filtering and Google Sheets integration."""
+
 import argparse
 import datetime as dt
-import os
 import sys
 from pathlib import Path
 from typing import Any, Callable, Dict, List
@@ -28,6 +29,7 @@ from spreadsheet import (
 
 
 def main() -> None:
+    """Main entry point for analyzing cached builds."""
     parser = argparse.ArgumentParser(description="Analyze cached Buildkite builds with filter callbacks")
     parser.add_argument(
         "--days",
@@ -209,7 +211,7 @@ def main() -> None:
         return f"{hrs:02d}:{mins:02d}:{secs:02d}"
 
     # Daily summary (Mon-Fri) including calendar date (MM/DD) grouped by job
-    from collections import defaultdict
+    from collections import defaultdict  # pylint: disable=import-outside-toplevel
 
     # Group by (pipeline, job_name) then by date
     job_daily_stats: Dict[tuple[str, str], Dict[dt.date, Dict[str, Any]]] = defaultdict(
@@ -400,7 +402,7 @@ def main() -> None:
                 print(f"Daily workload: {daily_avg_duration_str}")
                 print(f"Available time window: {pst_hours} hours ({args.pst_start}:00 - {args.pst_end}:00 PST)")
                 print(f"Required parallel resources: {required_resources:.1f}")
-                print(f"(To complete daily workload within time window)")
+                print("(To complete daily workload within time window)")
 
     # Google Sheets output
     if args.sheets_output:
@@ -450,7 +452,7 @@ def main() -> None:
 
             sheet_url = write_to_sheets(worksheet, sheet_data)
 
-            print(f"✅ Successfully exported to Google Sheets!")
+            print("✅ Successfully exported to Google Sheets!")
             print(f"📊 Sheet URL: {sheet_url}")
             print(f"📝 Worksheet: {args.sheets_tab}")
 

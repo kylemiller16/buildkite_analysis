@@ -1,3 +1,5 @@
+"""Google Sheets integration for Buildkite analysis reports."""
+
 import datetime as dt
 import re
 
@@ -46,7 +48,9 @@ def connect_to_sheets(credentials_path: str, sheets_id: str, worksheet_name: str
     return worksheet
 
 
-def format_data_for_sheets(job_daily_stats, sorted_job_keys, grand_totals, daily_averages, hil_resources):
+def format_data_for_sheets(
+    job_daily_stats, sorted_job_keys, grand_totals, daily_averages, hil_resources
+):
     """Format the analysis data for Google Sheets output."""
     data = []
 

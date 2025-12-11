@@ -1,3 +1,5 @@
+"""Download raw logs for validation jobs from multiple Buildkite pipelines."""
+
 import argparse
 import datetime as dt
 import json
@@ -75,7 +77,7 @@ def download_job_logs_for_build(
         output_dir = metadata_dir
     else:
         output_dir = os.path.dirname(metadata_path)
-    
+
     metadata_basename = os.path.splitext(os.path.basename(metadata_path))[0]
 
     downloaded_count = 0
@@ -140,6 +142,7 @@ def filter_builds_by_branch(
 
 
 def main() -> None:
+    """Main entry point for downloading job logs for pipelines."""
     parser = argparse.ArgumentParser(
         description="Download raw logs for validation jobs from all finished builds across pipelines in the last N days",
     )
@@ -224,4 +227,6 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+()
 
