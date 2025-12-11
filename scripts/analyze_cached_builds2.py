@@ -8,6 +8,16 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
+# Chart generation imports (optional)
+try:
+    import matplotlib
+    matplotlib.use("Agg")  # Use non-interactive backend
+    import matplotlib.pyplot as plt
+    CHART_AVAILABLE = True
+except ImportError:
+    CHART_AVAILABLE = False
+    plt = None
+
 # Add lib directory to path for standalone execution
 _SCRIPT_DIR = Path(__file__).resolve().parent
 _LIB_DIR = _SCRIPT_DIR.parent / "lib"
@@ -70,22 +80,238 @@ def _find_log_file_for_job(metadata_path: str, job_id: str) -> Optional[str]:
     return None
 
 
-def analyze_bazel_targets_from_log(log_file_path: str) -> Dict[str, bool]:
+def analyze_bazel_targets_from_log(log_file_path: str, job_passed: bool) -> Dict[str, bool]:
     """
     Analyze a log file to extract Bazel target pass/fail information.
     
-    This is a stub function - implement the actual log parsing logic here.
+    Looks for lines matching:
+    - "--- ⛰️  Running bazel-run step"
+    - "--- 🏃 Running target //wayve/robot/hil_tests/gen2:<some-name>"
+    
+    Since bazel-run steps run sequentially, only the last one could have failed.
+    If the job passed overall, all bazel-run steps passed.
+    If the job failed, the last bazel-run step failed, and all previous ones passed.
     
     Args:
         log_file_path: Path to the log file
+        job_passed: Whether the job passed overall
         
     Returns:
         Dictionary mapping target names to pass status (True = passed, False = failed)
-        Example: {"//path/to:target1": True, "//path/to:target2": False}
+        Example: {"//wayve/robot/hil_tests/gen2:target1": True, "//wayve/robot/hil_tests/gen2:target2": False}
     """
-    # TODO: Implement log parsing logic
-    # For now, return empty dict
-    return {}
+    import re
+    
+    target_results: Dict[str, bool] = {}
+    
+    try:
+        with open(log_file_path, "r", encoding="utf-8") as f:
+            log_content = f.read()
+    except Exception as e:
+        # If we can't read the file, return empty dict
+        return {}
+    
+    # Pattern to match: "--- 🏃 Running target //wayve/robot/hil_tests/gen2:<some-name>"
+    # The target name is captured in group 1
+    target_pattern = r"--- 🏃 Running target (//wayve/robot/hil_tests/gen2:[^\s]+)"
+    
+    # Find all target runs in the log
+    matches = re.findall(target_pattern, log_content)
+    
+    if not matches:
+        return {}
+    
+    # If job passed, all targets passed
+    if job_passed:
+        for target in matches:
+            target_results[target] = True
+    else:
+        # If job failed, last target failed, all previous passed
+        for i, target in enumerate(matches):
+            if i == len(matches) - 1:
+                # Last target failed
+                target_results[target] = False
+            else:
+                # Previous targets passed
+                target_results[target] = True
+    
+    return target_results
+
+
+def generate_bazel_target_charts(
+    bazel_target_stats: Dict[str, Dict[str, int]],
+    job_stats_by_name: Dict[str, Dict[str, int]],
+    output_format: str,
+    output_path: Optional[str] = None
+) -> None:
+    """
+    Generate a single pie chart showing job pass/fail and categorized target failures.
+    
+    Args:
+        bazel_target_stats: Dictionary mapping target names to pass/fail counts
+        job_stats_by_name: Dictionary mapping job names to pass/fail counts
+        output_format: "png" or "html"
+        output_path: Optional path to save the chart (default: bazel_targets_chart.{format})
+    """
+    if not CHART_AVAILABLE:
+        print("Warning: matplotlib is not available. Install with: pip install matplotlib")
+        return
+    
+    # Calculate total job passes (sum across all jobs)
+    total_job_passes = sum(stats["pass"] for stats in job_stats_by_name.values())
+    
+    # Count failures for specific target names (exact match on the target name after the colon)
+    device_recovery_failures = 0
+    setup_device_failures = 0
+    regression_tests_failures = 0
+    
+    for target_name, stats in bazel_target_stats.items():
+        fail_count = stats["fail"]
+        # Extract the target name part after the colon
+        if ":" in target_name:
+            target_part = target_name.split(":")[-1]
+        else:
+            target_part = target_name
+        
+        # Match exact target names
+        if target_part == "device_recovery":
+            device_recovery_failures += fail_count
+        elif target_part == "setup_device":
+            setup_device_failures += fail_count
+        elif target_part == "regression_tests_rcm_aem_evt_1":
+            regression_tests_failures += fail_count
+    
+    # Prepare data for pie chart
+    labels = []
+    sizes = []
+    colors = []
+    
+    if total_job_passes > 0:
+        labels.append("Job Passed")
+        sizes.append(total_job_passes)
+        colors.append("#2ecc71")  # Green
+    
+    if device_recovery_failures > 0:
+        labels.append("device_recovery failures")
+        sizes.append(device_recovery_failures)
+        colors.append("#9b59b6")  # Purple
+    
+    if setup_device_failures > 0:
+        labels.append("setup_device failures")
+        sizes.append(setup_device_failures)
+        colors.append("#f39c12")  # Orange
+    
+    if regression_tests_failures > 0:
+        labels.append("regression_tests_rcm_aem_evt_1 failures")
+        sizes.append(regression_tests_failures)
+        colors.append("#e74c3c")  # Red
+    
+    if not sizes:
+        print("No data to generate charts")
+        return
+    
+    # Determine output path
+    if output_path:
+        chart_path = output_path
+    else:
+        chart_path = f"bazel_targets_chart.{output_format}"
+    
+    if output_format == "png":
+        _generate_png_charts(labels, sizes, colors, chart_path)
+    elif output_format == "html":
+        _generate_html_charts(labels, sizes, colors, chart_path)
+    else:
+        print(f"Unknown output format: {output_format}")
+        return
+    
+    print(f"\nChart saved to: {os.path.abspath(chart_path)}")
+
+
+def _generate_png_charts(labels: List[str], sizes: List[int], colors: List[str], output_path: str) -> None:
+    """Generate a single PNG pie chart."""
+    fig, ax = plt.subplots(figsize=(10, 8))
+    
+    # Calculate percentages for labels
+    total = sum(sizes)
+    percentages = [(size / total * 100) for size in sizes]
+    labels_with_pct = [f"{label}\n({pct:.1f}%)" for label, pct in zip(labels, percentages)]
+    
+    # Create pie chart
+    wedges, texts, autotexts = ax.pie(
+        sizes,
+        labels=labels_with_pct,
+        colors=colors,
+        autopct="",
+        startangle=90,
+        textprops={"fontsize": 12, "fontweight": "bold"},
+    )
+    
+    ax.set_title("Job and Target Failure Statistics", fontsize=16, fontweight="bold", pad=20)
+    
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=150, bbox_inches="tight")
+    plt.close()
+
+
+def _generate_html_charts(labels: List[str], sizes: List[int], colors: List[str], output_path: str) -> None:
+    """Generate HTML file with embedded PNG chart."""
+    # Generate PNG first, then embed in HTML
+    png_path = output_path.replace(".html", ".png")
+    _generate_png_charts(labels, sizes, colors, png_path)
+    
+    # Create HTML file
+    html_content = f"""<!DOCTYPE html>
+<html>
+<head>
+    <title>Bazel Target Statistics</title>
+    <style>
+        body {{
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }}
+        h1 {{
+            color: #333;
+            text-align: center;
+        }}
+        .chart-container {{
+            background-color: white;
+            padding: 20px;
+            margin: 20px auto;
+            max-width: 1200px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }}
+        img {{
+            max-width: 100%;
+            height: auto;
+            display: block;
+            margin: 0 auto;
+        }}
+        .timestamp {{
+            text-align: center;
+            color: #666;
+            margin-top: 20px;
+            font-size: 12px;
+        }}
+    </style>
+</head>
+<body>
+    <div class="chart-container">
+        <h1>Bazel Target Pass/Fail Statistics</h1>
+        <img src="{os.path.basename(png_path)}" alt="Bazel Target Statistics">
+        <div class="timestamp">
+            Generated: {dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+        </div>
+    </div>
+</body>
+</html>"""
+    
+    with open(output_path, "w", encoding="utf-8") as f:
+        f.write(html_content)
+    
+    print(f"HTML file saved to: {os.path.abspath(output_path)}")
+    print(f"PNG chart saved to: {os.path.abspath(png_path)}")
 
 
 def load_cached_builds_with_logs(
@@ -201,6 +427,15 @@ def main() -> None:
         action="store_true",
         help="Disable the PST time-of-day filter",
     )
+    parser.add_argument(
+        "--chart-output",
+        choices=["png", "html"],
+        help="Generate pie charts for Bazel target statistics. Options: png or html",
+    )
+    parser.add_argument(
+        "--chart-path",
+        help="Path to save the chart file (default: bazel_targets_chart.png or .html in current directory)",
+    )
 
     args = parser.parse_args()
 
@@ -245,8 +480,9 @@ def main() -> None:
         # Job-level statistics (per job name)
         for job, log_file_path in jobs_with_logs:
             job_name = job.get("name", "unknown")
+            job_passed = _is_job_pass(job)
             
-            if _is_job_pass(job):
+            if job_passed:
                 job_stats_by_name[job_name]["pass"] += 1
             else:
                 job_stats_by_name[job_name]["fail"] += 1
@@ -254,7 +490,7 @@ def main() -> None:
             # Bazel target statistics (if log file exists)
             if log_file_path and os.path.exists(log_file_path):
                 try:
-                    target_results = analyze_bazel_targets_from_log(log_file_path)
+                    target_results = analyze_bazel_targets_from_log(log_file_path, job_passed)
                     for target_name, passed in target_results.items():
                         if passed:
                             bazel_target_stats[target_name]["pass"] += 1
@@ -330,17 +566,9 @@ def main() -> None:
                 print(f"      Passed: {stats['pass']} ({pass_pct:.1f}%)")
                 print(f"      Failed: {stats['fail']} ({fail_pct:.1f}%)")
         
-        # Overall target statistics
-        total_target_runs = sum(s["pass"] + s["fail"] for s in bazel_target_stats.values())
-        total_target_passes = sum(s["pass"] for s in bazel_target_stats.values())
-        total_target_fails = sum(s["fail"] for s in bazel_target_stats.values())
-        if total_target_runs > 0:
-            overall_pass_pct = (total_target_passes / total_target_runs) * 100
-            overall_fail_pct = (total_target_fails / total_target_runs) * 100
-            print(f"\n  Overall target statistics:")
-            print(f"    Total target runs: {total_target_runs}")
-            print(f"    Total passes: {total_target_passes} ({overall_pass_pct:.1f}%)")
-            print(f"    Total failures: {total_target_fails} ({overall_fail_pct:.1f}%)")
+        # Generate charts if requested
+        if args.chart_output and (bazel_target_stats or job_stats_by_name):
+            generate_bazel_target_charts(bazel_target_stats, job_stats_by_name, args.chart_output, args.chart_path)
     else:
         print(f"\nBAZEL TARGET STATISTICS: No target data found (log analysis not implemented)")
 
