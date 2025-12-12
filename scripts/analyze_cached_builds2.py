@@ -22,15 +22,15 @@ _SCRIPT_DIR = Path(__file__).resolve().parent
 _LIB_DIR = _SCRIPT_DIR.parent / "lib"
 sys.path.insert(0, str(_LIB_DIR))
 
-from analysis import filter_cached_jobs
-from filters import (
+from analysis import filter_cached_jobs  # type: ignore  # noqa: E402
+from filters import (  # type: ignore  # noqa: E402
     build_branch_filter,
     build_exclude_branch_filter,
     build_job_name_filter,
     build_pipeline_filter,
     build_pst_time_of_day_filter,
 )
-from util import (
+from util import (  # type: ignore  # noqa: E402
     BuildkiteConfig,
     analyze_bazel_targets_from_log,
     find_log_file_for_job,
@@ -229,8 +229,8 @@ def load_cached_builds_with_logs(
     - build_metadata: The full build metadata dict
     - jobs_with_logs: List of (job, log_file_path) tuples
     """
-    from analysis import _iter_cached_build_files
-    
+    from analysis import _iter_cached_build_files  # type: ignore  # pylint: disable=import-outside-toplevel
+
     # Get all job records using existing filter logic
     job_records = filter_cached_jobs(filter_callbacks, started_from=started_from, started_to=started_to)
     

@@ -62,12 +62,21 @@ def _auth_headers() -> Dict[str, str]:
     }
 
 
-def get_build_metadata(org_slug: str, pipeline_slug: str, build_number: int) -> str:
+def get_build_metadata(
+    org_slug: str, pipeline_slug: str, build_number: int, include_retried_jobs: bool = True
+) -> str:
     """
     Fetch full build metadata from Buildkite and save to a JSON file.
     Acts as a cache: if the file already exists, returns it without an API call.
 
-    Returns absolute path to the saved JSON file.
+    Args:
+        org_slug: Buildkite organization slug
+        pipeline_slug: Pipeline slug
+        build_number: Build number
+        include_retried_jobs: If True, include retried jobs in the response (default: True)
+
+    Returns:
+        Absolute path to the saved JSON file.
     """
     os.makedirs(BuildkiteConfig.BUILD_METADATA_DIR, exist_ok=True)
     filename = f"{org_slug}__{pipeline_slug}__{build_number}.json"
@@ -83,7 +92,10 @@ def get_build_metadata(org_slug: str, pipeline_slug: str, build_number: int) -> 
         f"{BuildkiteConfig.API_URL}/organizations/{org_slug}/"
         f"pipelines/{pipeline_slug}/builds/{build_number}"
     )
-    build_json: Dict[str, Any] = cached_json_get(url, headers=_auth_headers(), params=None)
+    params: Dict[str, str] = {}
+    if include_retried_jobs:
+        params["include_retried_jobs"] = "true"
+    build_json: Dict[str, Any] = cached_json_get(url, headers=_auth_headers(), params=params if params else None)
 
     tmp_path = f"{out_path}.tmp"
     with open(tmp_path, "w", encoding="utf-8") as f:
@@ -254,3 +266,54 @@ def analyze_bazel_targets_from_log(log_file_path: str, job_passed: bool) -> Dict
                 target_results[target] = True
 
     return target_results
+
+
+def get_all_job_ids(build: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """
+    Extract all job IDs from a build metadata dictionary.
+
+    Args:
+        build: Build metadata dictionary from Buildkite API
+
+    Returns:
+        List of dictionaries, each containing:
+        - job_name: str - The name of the job
+        - job_id: str - The unique ID of the job
+        - retry: bool - True if this job is a retry, False otherwise
+    """
+    jobs = build.get("jobs", [])
+    result = []
+
+    for job in jobs:
+        job_name = job.get("name", "")
+        job_id = job.get("id", "")
+        retry_source = job.get("retry_source")
+        is_retry = retry_source is not None
+        raw_log_url = job.get("raw_log_url")
+
+        if job_id:  # Only include jobs with valid IDs
+            result.append({
+                "job_name": job_name,
+                "job_id": job_id,
+                "retry": is_retry,
+                "raw_log_url": raw_log_url,
+            })
+
+    return result
+
+
+class Build:
+    pass
+
+    def __init__(self, metadata_path: str):
+        self.metadata_path = metadata_path
+        self.metadata = json.load(open(metadata_path, "r", encoding="utf-8"))
+        self.number = self.metadata.get("number")
+        self.pipeline = self.metadata.get("pipeline")
+        self.branch = self.metadata.get("branch")
+        self.created_at = self.metadata.get("created_at")
+        self.finished_at = self.metadata.get("finished_at")
+        self.jobs = self.metadata.get("jobs")
+
+class Job:
+    pass
